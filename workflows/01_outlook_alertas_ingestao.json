@@ -1,0 +1,158 @@
+{
+  "name": "Clipping V1 - 01 Ingestão Outlook Alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "INBOX",
+        "options": {
+          "customEmailConfig": true,
+          "host": "outlook.office365.com",
+          "port": 993,
+          "secure": true,
+          "allowUnauthorizedCerts": false
+        }
+      },
+      "id": "EmailTrigger_Outlook",
+      "name": "Email Trigger (Outlook IMAP)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 1,
+      "position": [
+        240,
+        260
+      ],
+      "credentials": {
+        "imap": {
+          "id": "__SET_ME__",
+          "name": "Outlook IMAP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{($json.from || $json.fromEmail || '')}}",
+              "rightValue": "googlealerts",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "IF_OnlyGoogleAlerts",
+      "name": "IF - Só Google Alerts",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $json.html || $json.textHtml || $json.text || '';\nconst subject = $json.subject || '';\nconst from = $json.from || $json.fromEmail || '';\nconst capturedAt = new Date().toISOString();\n\n// Busca links absolutos no conteúdo\nconst urlRegex = /https?:\\/\\/[^\\s\"'<>]+/g;\nconst urls = [...new Set((html.match(urlRegex) || []))]\n  .filter(u => !u.includes('google.com/alerts'))\n  .slice(0, 50);\n\nif (!urls.length) {\n  return [{\n    json: {\n      captured_at: capturedAt,\n      alert_subject: subject,\n      sender: from,\n      keyword: subject.replace(/^Google Alert - /i, '').trim(),\n      title_raw: subject,\n      source_raw: '',\n      url_raw: '',\n      snippet_raw: '',\n      status: 'revisar',\n      error_reason: 'Nenhum link encontrado no e-mail'\n    }\n  }];\n}\n\nreturn urls.map((url, i) => ({\n  json: {\n    id: `${capturedAt}-${i + 1}`,\n    captured_at: capturedAt,\n    alert_subject: subject,\n    sender: from,\n    keyword: subject.replace(/^Google Alert - /i, '').trim(),\n    title_raw: '',\n    source_raw: '',\n    url_raw: url,\n    snippet_raw: '',\n    status: 'novo',\n    duplicate: false\n  }\n}));"
+      },
+      "id": "Code_ExtractLinks",
+      "name": "Code - Extrair links",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": "__SET_ME__",
+        "sheetName": "Base_Noticias",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{$json.id}}",
+            "captured_at": "={{$json.captured_at}}",
+            "alert_subject": "={{$json.alert_subject}}",
+            "keyword": "={{$json.keyword}}",
+            "title_raw": "={{$json.title_raw}}",
+            "source_raw": "={{$json.source_raw}}",
+            "url_raw": "={{$json.url_raw}}",
+            "snippet_raw": "={{$json.snippet_raw}}",
+            "status": "={{$json.status}}",
+            "duplicate": "={{$json.duplicate}}",
+            "error_reason": "={{$json.error_reason || ''}}"
+          }
+        },
+        "options": {}
+      },
+      "id": "GoogleSheets_Append",
+      "name": "Google Sheets - Append Base_Noticias",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1020,
+        180
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "__SET_ME__",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Email Trigger (Outlook IMAP)": {
+      "main": [
+        [
+          {
+            "node": "IF - Só Google Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Só Google Alerts": {
+      "main": [
+        [
+          {
+            "node": "Code - Extrair links",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Code - Extrair links": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Append Base_Noticias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "WF01_Outlook_Ingestao",
+  "tags": []
+}
