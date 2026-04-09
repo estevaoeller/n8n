@@ -1,0 +1,243 @@
+{
+  "name": "Clipping V1 - 02 Enriquecimento e Deduplicação",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "Schedule_30min",
+      "name": "Schedule Trigger (30 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": "__SET_ME__",
+        "sheetName": "Base_Noticias",
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "novo"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "Sheets_ReadNew",
+      "name": "Google Sheets - Ler novos",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        460,
+        280
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "__SET_ME__",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\n\nfunction canonicalizeUrl(u) {\n  try {\n    const x = new URL(u);\n    x.hash = '';\n    const removeParams = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','gclid','fbclid'];\n    removeParams.forEach(p => x.searchParams.delete(p));\n    return x.toString();\n  } catch {\n    return u || '';\n  }\n}\n\nconst title = ($json.title_raw || '').toLowerCase().replace(/\\s+/g, ' ').trim();\nconst urlCanonica = canonicalizeUrl($json.url_raw || '');\nconst hashTitulo = crypto.createHash('sha1').update(title).digest('hex');\n\nreturn [{ json: { ...$json, url_canonica: urlCanonica, hash_titulo: hashTitulo } }];"
+      },
+      "id": "Code_Normalize",
+      "name": "Code - Normalizar URL e hash",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.url_canonica}}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "HTTP_GetArticle",
+      "name": "HTTP Request - Baixar notícia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        980,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "sourceData": "json",
+        "dataPropertyName": "body",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "title_extracted",
+              "cssSelector": "title",
+              "returnValue": "text"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "HTML_ExtractTitle",
+      "name": "HTML - Extrair título",
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        1240,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const title = $json.title_extracted || $json.title_raw || '';\nconst resumo = `Resumo automático: ${title}`.slice(0, 240);\n\nreturn [{\n  json: {\n    ...$json,\n    title_final: title,\n    source: $json.source_raw || '',\n    published_at: $json.published_at || '',\n    tema: $json.tema || 'geral',\n    subtema: $json.subtema || '',\n    resumo_final: resumo,\n    comentario_analitico: '',\n    relevancia: 'media',\n    status: 'revisar'\n  }\n}];"
+      },
+      "id": "Code_StructOutput",
+      "name": "Code - Estruturar saída",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": "__SET_ME__",
+        "sheetName": "Base_Noticias",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{$json.id}}",
+            "url_canonica": "={{$json.url_canonica}}",
+            "hash_titulo": "={{$json.hash_titulo}}",
+            "title_final": "={{$json.title_final}}",
+            "resumo_final": "={{$json.resumo_final}}",
+            "comentario_analitico": "={{$json.comentario_analitico}}",
+            "relevancia": "={{$json.relevancia}}",
+            "status": "={{$json.status}}"
+          },
+          "matchingColumns": [
+            "id"
+          ]
+        },
+        "options": {}
+      },
+      "id": "Sheets_Update",
+      "name": "Google Sheets - Atualizar Base_Noticias",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1720,
+        280
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "__SET_ME__",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (30 min)": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Ler novos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Ler novos": {
+      "main": [
+        [
+          {
+            "node": "Code - Normalizar URL e hash",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Normalizar URL e hash": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Baixar notícia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Baixar notícia": {
+      "main": [
+        [
+          {
+            "node": "HTML - Extrair título",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML - Extrair título": {
+      "main": [
+        [
+          {
+            "node": "Code - Estruturar saída",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Estruturar saída": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Atualizar Base_Noticias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "WF02_Enriquecimento",
+  "tags": []
+}

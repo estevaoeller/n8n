@@ -1,0 +1,141 @@
+{
+  "name": "Clipping V1 - 03 Fechamento Semanal por E-mail",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                "friday"
+              ],
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "Schedule_Weekly",
+      "name": "Schedule Trigger (Sexta 08:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": "__SET_ME__",
+        "sheetName": "Base_Noticias",
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "aprovado"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "Sheets_ReadApproved",
+      "name": "Google Sheets - Ler aprovados",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        480,
+        280
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "__SET_ME__",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst sevenDaysAgo = new Date(now);\nsevenDaysAgo.setDate(now.getDate() - 7);\n\nconst rows = $input.all()\n  .map(i => i.json)\n  .filter(r => {\n    const d = new Date(r.published_at || r.captured_at || 0);\n    return d >= sevenDaysAgo && d <= now;\n  })\n  .sort((a, b) => {\n    const pr = { alta: 3, media: 2, baixa: 1 };\n    return (pr[b.relevancia] || 0) - (pr[a.relevancia] || 0);\n  });\n\nlet html = `<h2>Clipping Semanal</h2><p>Período: ${sevenDaysAgo.toISOString().slice(0,10)} a ${now.toISOString().slice(0,10)}</p>`;\nrows.forEach((r, idx) => {\n  html += `<hr/><p><b>${idx + 1}. ${r.title_final || r.title_raw || '(sem título)'}</b><br/>`;\n  html += `Fonte: ${r.source || r.source_raw || 'N/D'} | Data: ${r.published_at || r.captured_at || ''}<br/>`;\n  html += `<a href=\"${r.url_canonica || r.url_raw}\">Link</a><br/>`;\n  html += `${r.resumo_final || ''}<br/><i>${r.comentario_analitico || ''}</i></p>`;\n});\n\nreturn [{ json: { clipping_html: html, total_itens: rows.length } }];"
+      },
+      "id": "Code_MountDigest",
+      "name": "Code - Montar clipping",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "Estevao.eller@fgv.br",
+        "toEmail": "Estevao.eller@fgv.br",
+        "subject": "={{`Clipping semanal (${new Date().toISOString().slice(0,10)}) - ${$json.total_itens} itens`}}",
+        "emailType": "html",
+        "message": "={{$json.clipping_html}}",
+        "options": {}
+      },
+      "id": "EmailSend_SMTP",
+      "name": "Email Send (SMTP Outlook)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1020,
+        280
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "__SET_ME__",
+          "name": "Outlook SMTP"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Sexta 08:00)": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Ler aprovados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Ler aprovados": {
+      "main": [
+        [
+          {
+            "node": "Code - Montar clipping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Montar clipping": {
+      "main": [
+        [
+          {
+            "node": "Email Send (SMTP Outlook)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "WF03_FechamentoSemanal",
+  "tags": []
+}
